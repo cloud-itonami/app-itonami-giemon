@@ -1,17 +1,17 @@
 {
   "jobs": [
     {
-      "base_url": null,
+      "base_url": "https://api.murakumo.cloud/v1",
       "context_from": null,
       "deliver": "local",
       "enabled": true,
       "enabled_toolsets": null,
       "id": "fcb3cfa2d73d",
-      "model": null,
+      "model": "mishima",
       "name": "giemon-sim-bench-iteration",
       "no_agent": false,
       "prompt": "giemon sim-loop bench iteration: run clojure -M:test for kotoba-lang/robotics and kotoba-lang/giemon, seeded reproduction check, record results to sim-loop/evidence/bench-*.md. No code changes.",
-      "provider": null,
+      "provider": "murakumo",
       "schedule": {
         "kind": "cron",
         "expr": "4 1-23/3 * * *",
