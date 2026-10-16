@@ -2,3 +2,9 @@
 /target/
 /out/
 .nbb/
+
+# root-level scratch output from sim-loop diagnostics -- never source
+/diag.txt
+/statout.txt
+/simloop_files_list.txt
+/COMMIT_MSG.txt
