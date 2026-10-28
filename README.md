@@ -27,6 +27,11 @@ kbb -M:test
 kbb -M:lint
 ```
 
+`kbb -M:test` is the runner of record. The JVM alias (`clojure -M:test`,
+cognitect test-runner) only discovers `.clj`/`.cljc` namespaces, so over
+this repo's `.cljk` tests it reports "Ran 0 tests" with exit 0 — a silent
+green, not a pass. Use `kbb`; a failing assertion exits non-zero.
+
 ## Maturity
 
 | | |
@@ -54,6 +59,11 @@ kbb -M:lint
 (arm/forward-kinematics giemon-arm6 [0.0 0.2 -0.3 0.0 0.5 0.0])
 (arm/underrated-joints giemon-arm6)   ; joints whose actuator is under-rated
 
+;; joint-limit guard: plain forward-kinematics is pure and accepts any angle;
+;; anything that may reach hardware goes through the checked variants
+(arm/angle-violations giemon-arm6 angles)             ; [] or violation maps (fails closed)
+(arm/checked-forward-kinematics giemon-arm6 angles)   ; {:poses [...]} or {:refused [...]}
+
 ;; actuator BOM by :arm/realization variant (ported from kami-articulated-scene)
 (arm/bom giemon-arm6 :all-qdd)             ; the inline chain actuators (default)
 (arm/bom giemon-arm6 :harmonic-shoulder)   ; :all-qdd with j2's :override applied
@@ -68,6 +78,10 @@ kbb -M:lint
 ;; Kaigo mission/action, delegating the safety gate to kotoba-lang/robotics
 (gov/kaigo-action "A1" "M1" :otete :move)
 (gov/fall-detected-alert "A2" "M1" :params {:location "hallway"})
+
+;; arm command gate: denies joint-limit violations and under-rated actuators
+;; before the generic safety-class gate runs
+(gov/arm-command-gate action giemon-arm6 angles #{:none :low :medium})
 
 ;; ops (commercial/municipal cleaning-service) mission/action, same gate
 (gov/ops-action "A3" "M2" :caterpillar :move)            ; defaults to :high, not kaigo's :low

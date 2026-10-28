@@ -4,7 +4,8 @@
   (ADR-2607011000). This library never drives hardware — it only shapes
   Giemon-specific missions and actions into the safety classes
   `kotoba.robotics/gate` checks. See ADR-2605142300."
-  (:require [kotoba.robotics :as rob]))
+  (:require [kotoba.robotics :as rob]
+            [kotoba.giemon.arm :as arm]))
 
 (def kaigo-roles
   "Per-product Kaigo application role and default action safety posture,
@@ -66,3 +67,31 @@
   dispatch, mirroring `fall-detected-alert`'s hardcoded posture."
   [id mission-id & {:keys [params]}]
   (rob/action id mission-id :emit :safety-critical :params params))
+
+(defn arm-command-gate
+  "Governor decision for `action` commanding `arm` to joint `angles`.
+  Before the generic safety-class gate (`kotoba.robotics/gate`), refuses
+  with `:deny` any command that violates a joint limit
+  (`:joint-limit-violation`, with `:gate/violations`) or that targets a
+  joint whose assigned actuator is under-rated for its design torque
+  (`:actuator-underrated`, with `:gate/joints`). `:actuators` selects the
+  BOM to validate (default: the arm's inline chain actuators, see
+  `kotoba.giemon.arm/bom`). Policy only — nothing here drives hardware."
+  [action arm angles allowed-safety-classes & {:keys [actuators]}]
+  (let [violations (arm/angle-violations arm angles)
+        under (if actuators
+                (arm/underrated-joints arm actuators)
+                (arm/underrated-joints arm))]
+    (cond
+      (seq violations)
+      {:gate/decision :deny
+       :gate/reason :joint-limit-violation
+       :gate/violations violations}
+
+      (seq under)
+      {:gate/decision :deny
+       :gate/reason :actuator-underrated
+       :gate/joints (mapv :joint/name under)}
+
+      :else
+      (rob/gate action allowed-safety-classes))))

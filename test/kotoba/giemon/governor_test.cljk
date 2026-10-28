@@ -1,7 +1,8 @@
 (ns kotoba.giemon.governor-test
   (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.robotics :as rob]
-            [kotoba.giemon.governor :as gov]))
+            [kotoba.giemon.governor :as gov]
+            [kotoba.giemon.arm :as arm]))
 
 (deftest kaigo-mission-test
   (let [m (gov/kaigo-mission "M1" :otete "服薬管理")]
@@ -45,3 +46,41 @@
       (is (= :safety-critical (:action/safety a)))
       (is (rob/requires-sign-off? a))
       (is (= :emit (:action/kind a))))))
+
+(def ^:private ok-arm
+  {:arm/chain
+   [{:joint/name "j1" :joint/origin [0.0 0.0 1.0] :joint/axis [0.0 0.0 1.0]
+     :joint/limit {:lower -3.0 :upper 3.0 :effort 10} :joint/actuator {:cont-nm 20}}
+    {:joint/name "j2" :joint/origin [0.0 0.0 1.0] :joint/axis [0.0 1.0 0.0]
+     :joint/limit {:lower -1.0 :upper 1.0 :effort 30} :joint/actuator {:cont-nm 35}}]})
+
+(deftest arm-command-gate-test
+  (let [low (gov/kaigo-action "A5" "M1" :otete :move :safety :low)
+        crit (gov/kaigo-action "A6" "M1" :otete :move :safety :safety-critical)
+        allowed #{:none :low :medium :high :safety-critical}]
+    (testing "an in-limit command falls through to the generic safety gate"
+      (is (= :permit (:gate/decision (gov/arm-command-gate low ok-arm [0.0 0.5] allowed))))
+      (is (= :require-sign-off (:gate/decision (gov/arm-command-gate crit ok-arm [0.0 0.5] allowed)))))
+    (testing "an out-of-limit command is denied even for a permissible safety class"
+      (let [d (gov/arm-command-gate low ok-arm [0.0 1.5] allowed)]
+        (is (= :deny (:gate/decision d)))
+        (is (= :joint-limit-violation (:gate/reason d)))
+        (is (= "j2" (:joint/name (first (:gate/violations d)))))))
+    (testing "an out-of-limit command is denied before sign-off, not routed to it"
+      (is (= :deny (:gate/decision (gov/arm-command-gate crit ok-arm [0.0 1.5] allowed)))))
+    (testing "a wrong angle count is denied, not zero-filled"
+      (is (= :joint-limit-violation (:gate/reason (gov/arm-command-gate low ok-arm [0.0] allowed)))))
+    (testing "an under-rated actuator is denied"
+      (let [under (assoc-in ok-arm [:arm/chain 1 :joint/actuator :cont-nm] 25)
+            d (gov/arm-command-gate low under [0.0 0.5] allowed)]
+        (is (= :deny (:gate/decision d)))
+        (is (= :actuator-underrated (:gate/reason d)))
+        (is (= ["j2"] (:gate/joints d)))))
+    (testing "a replacement BOM that fixes the under-rating is honoured"
+      (let [under (assoc-in ok-arm [:arm/chain 1 :joint/actuator :cont-nm] 25)
+            fixed [{:joint "j1" :cont-nm 20} {:joint "j2" :cont-nm 40}]]
+        (is (= :permit (:gate/decision
+                         (gov/arm-command-gate low under [0.0 0.5] allowed :actuators fixed))))))
+    (testing "an action that fails the safety-class set is still denied by the generic gate"
+      (is (= :safety-class-not-allowed
+             (:gate/reason (gov/arm-command-gate crit ok-arm [0.0 0.5] #{:low})))))))
