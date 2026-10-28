@@ -108,6 +108,18 @@ original render-frame, not yet axis-remapped — see `:chassis/realization
 the product registry — this fixture existing does not make it orderable
 (ADR-2607062210's honest-default principle).
 
+`fixtures/giemon_hitogata_skeleton/` — a **partial, design-stage** kinematic
+skeleton of Hitogata: the **13 joints** (legs 6, arms 6, neck 1) that
+`kotoba-lang/kami-app-giemon`'s standing display-pose geometry supports,
+one serial chain per limb (`kotoba.giemon.hitogata`). The declared 17 axes
+are **not** all defined — the other 4 are unresolved. Joint axes are read
+from the servo cylinders' orientation (geometry, not confirmed design
+intent), the frame stays the source's y-up render frame, and no
+`:joint/limit`, actuator, damping or link inertia is invented, so
+`arm/angle-violations` and `gov/arm-command-gate` refuse every Hitogata
+command until limits are supplied. Hitogata stays `:product/status
+:in-design`.
+
 Both `fixtures/*.edn` files (and `resources/kami/provider/split_contract.edn`)
 are stored as Datomic/Datascript tx-data (`scripts/edn-datomize.bb
 wrap-generic`, schema in `schema.edn`, both generated — do not hand-edit):

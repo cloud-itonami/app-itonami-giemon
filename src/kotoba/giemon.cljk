@@ -26,7 +26,8 @@
     :product/dof 17
     :product/height-mm 285
     :product/status :in-design
-    :product/kaigo-role "リハビリ・交流ロボット"}
+    :product/kaigo-role "リハビリ・交流ロボット"
+    :product/fixture "fixtures/giemon_hitogata_skeleton/giemon_hitogata_skeleton.edn"}
    :caterpillar
    {:product/name "Giemon Caterpillar"
     :product/kind :dual-track-ugv

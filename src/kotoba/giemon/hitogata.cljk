@@ -1,0 +1,43 @@
+(ns kotoba.giemon.hitogata
+  "Giemon Hitogata (17-axis biped, `:in-design`) kinematic skeleton over
+  `fixtures/giemon_hitogata_skeleton` — the joints the existing design data
+  supports (13 of the declared 17), with limits and actuators left
+  unresolved rather than guessed.
+
+  A biped is a tree, but `kotoba.giemon.arm` walks serial chains, so the
+  skeleton is stored as one chain per limb (`limbs`), each rooted at the
+  pelvis or torso. `limb-arm` presents a limb as an `:arm/chain` spec, so
+  `arm/forward-kinematics`, `arm/angle-violations` and
+  `governor/arm-command-gate` apply unchanged. Because the fixture declares
+  no `:joint/limit`, those guards refuse every command until limits exist.
+
+  Pure data in, pure data out: callers read/parse the EDN fixture
+  themselves. No network, no I/O.")
+
+(def limbs
+  "Limb ids, in the fixture's chain order."
+  [:leg-l :leg-r :arm-l :arm-r :neck])
+
+(defn limb-arm
+  "`limb` (one of `limbs`) of `skeleton` as an arm spec: `:arm/chain` is the
+  limb's base-first joint vector; `:arm/base-link` / `:arm/root-origin` name
+  the pelvis or torso it hangs from (forward kinematics is relative to that
+  root, in the skeleton's own frame)."
+  [skeleton limb]
+  (let [c (get-in skeleton [:hitogata/chains limb])]
+    (when c
+      {:arm/name (str (name limb))
+       :arm/chain (:chain/joints c)
+       :arm/base-link (:chain/root-link c)
+       :arm/root-origin (:chain/root-origin c)})))
+
+(defn joint-count
+  "Number of joints the skeleton actually defines (13, not the declared 17)."
+  [skeleton]
+  (transduce (map #(count (:chain/joints (get-in skeleton [:hitogata/chains %]))))
+             + 0 limbs))
+
+(defn unresolved-dof
+  "Declared axes the skeleton does not define."
+  [skeleton]
+  (- (:hitogata/dof-declared skeleton) (joint-count skeleton)))
