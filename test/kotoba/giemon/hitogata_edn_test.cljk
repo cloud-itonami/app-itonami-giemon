@@ -1,0 +1,69 @@
+(ns kotoba.giemon.hitogata-edn-test
+  "Reads the actual giemon_hitogata_skeleton.edn fixture (tx-data with
+  pr-str blobs, same convention as giemon_caterpillar_facade.edn)."
+  (:require [kotoba.lang.edn :as edn]
+            [kotoba.io :as io]
+            [kotoba.test :refer [deftest is testing]]
+            [kotoba.robotics :as rob]
+            [kotoba.giemon :as giemon]
+            [kotoba.giemon.arm :as arm]
+            [kotoba.giemon.governor :as gov]
+            [kotoba.giemon.hitogata :as hitogata]))
+
+(defn- unblob [v]
+  (if (string? v)
+    (try (let [parsed (edn/read-string v)] (if (coll? parsed) parsed v))
+         (catch Exception _ v))
+    v))
+
+(def skeleton
+  (let [tx (edn/read-string (slurp (io/file "fixtures" "giemon_hitogata_skeleton"
+                                            "giemon_hitogata_skeleton.edn")))]
+    (into {} (map (fn [[k v]] [k (unblob v)])) (dissoc (first tx) :db/id))))
+
+(deftest fixture-shape-test
+  (is (= "giemon_hitogata_skeleton" (:hitogata/name skeleton)))
+  (is (= :draft (:hitogata/status skeleton)))
+  (is (= [:leg-l :leg-r :arm-l :arm-r :neck] hitogata/limbs))
+  (is (every? #(some? (hitogata/limb-arm skeleton %)) hitogata/limbs)))
+
+(deftest honest-dof-accounting-test
+  (testing "13 joints are derived from geometry; 17 is the declared product figure"
+    (is (= 13 (hitogata/joint-count skeleton)))
+    (is (= 13 (:hitogata/dof-derived skeleton)))
+    (is (= 17 (:hitogata/dof-declared skeleton)))
+    (is (= 4 (hitogata/unresolved-dof skeleton)))
+    (is (= 17 (:product/dof (giemon/product :hitogata))))))
+
+(deftest left-right-mirror-test
+  (doseq [[l r] [[:leg-l :leg-r] [:arm-l :arm-r]]]
+    (let [lj (:arm/chain (hitogata/limb-arm skeleton l))
+          rj (:arm/chain (hitogata/limb-arm skeleton r))]
+      (is (= (count lj) (count rj)))
+      (is (= (map :joint/axis lj) (map :joint/axis rj)))
+      (is (= (map #(update (:joint/origin %) 0 -) lj)
+             (map :joint/origin rj))))))
+
+(deftest leg-forward-kinematics-matches-source-geometry-test
+  (testing "zero-angle ankle height is the source ankle servo height (0.015 m)"
+    (let [leg (hitogata/limb-arm skeleton :leg-l)
+          [_ y _] (:xf/pos (arm/end-effector leg [0.0 0.0 0.0]))
+          [_ ry _] (:arm/root-origin leg)]
+      (is (< (Math/abs (- 0.015 (+ ry y))) 1e-9)))))
+
+(deftest no-limits-fail-closed-test
+  (testing "no :joint/limit is declared, so every command is refused"
+    (doseq [limb hitogata/limbs
+            :let [a (hitogata/limb-arm skeleton limb)
+                  zeros (vec (repeat (arm/joint-count a) 0.0))]]
+      (is (seq (arm/angle-violations a zeros)))
+      (is (:refused (arm/checked-forward-kinematics a zeros)))))
+  (testing "the governor denies a Hitogata arm command"
+    (let [a (hitogata/limb-arm skeleton :leg-l)
+          act (gov/kaigo-action "H1" "M1" :hitogata :move :safety :low)
+          d (gov/arm-command-gate act a [0.0 0.0 0.0] #{:none :low})]
+      (is (= :deny (:gate/decision d)))
+      (is (= :joint-limit-violation (:gate/reason d))))))
+
+(deftest product-stays-in-design-test
+  (is (= :in-design (:product/status (giemon/product :hitogata)))))
