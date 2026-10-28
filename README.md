@@ -1,7 +1,5 @@
 # kotoba-giemon
 
-[![CI](https://github.com/kotoba-lang/giemon/actions/workflows/ci.yml/badge.svg)](https://github.com/kotoba-lang/giemon/actions/workflows/ci.yml)
-
 **Giemon open-hardware robot product line, in pure Clojure.** A
 [kotoba-lang](https://github.com/kotoba-lang) capability library for the
 Giemon brand (ADR-2605142200): **Otete** (6-DOF arm + crawler kit,
