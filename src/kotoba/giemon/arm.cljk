@@ -19,14 +19,41 @@
   (let [{:keys [lower upper]} (:joint/limit joint)]
     (and (some? lower) (some? upper) (<= lower angle upper))))
 
+(defn angle-violations
+  "Why `angles` must not be commanded on `arm`, as a vector of violation
+  maps (empty when the command is within every declared limit). Fails
+  closed: a count mismatch, a non-number or NaN angle, a joint without a
+  declared `:joint/limit`, and an angle outside the limit are all
+  violations — never silently zero-filled or accepted."
+  [arm angles]
+  (let [chain (:arm/chain arm)
+        angles (vec angles)]
+    (into
+      (if (= (count chain) (count angles))
+        []
+        [{:violation/kind :angle-count-mismatch
+          :expected (count chain)
+          :actual (count angles)}])
+      (keep-indexed
+        (fn [i joint]
+          (when (< i (count angles))
+            (let [angle (nth angles i)]
+              (when-not (and (number? angle) (within-limits? joint angle))
+                {:violation/kind :out-of-limit
+                 :joint/name (:joint/name joint)
+                 :angle angle
+                 :limit (:joint/limit joint)}))))
+        chain))))
+
 (defn forward-kinematics
   "Given an `arm` spec (`:arm/chain`, a base-first vector of joints) and a
   seq of joint `angles` (radians, one per chain entry), return a vector of
   world-frame transforms — one per joint/child-link, in chain order.
 
   This is pure kinematics, not the safety gate: an angle outside a joint's
-  declared limit still produces a pose. Check `within-limits?` first if
-  that matters to the caller."
+  declared limit still produces a pose, and missing angles default to 0.0.
+  Use `checked-forward-kinematics` (or `angle-violations`) for any command
+  that may reach hardware."
   [arm angles]
   (loop [chain (:arm/chain arm)
          angles (seq angles)
@@ -39,6 +66,16 @@
             local (k/joint-transform (:joint/origin joint) (:joint/axis joint) angle)
             world (k/combine parent local)]
         (recur (rest chain) (rest angles) world (conj acc world))))))
+
+(defn checked-forward-kinematics
+  "Forward kinematics behind the joint-limit guard. Returns
+  `{:poses [...]}` when `angles` has no `angle-violations`, otherwise
+  `{:refused [violation ...]}` and no poses."
+  [arm angles]
+  (let [violations (angle-violations arm angles)]
+    (if (seq violations)
+      {:refused violations}
+      {:poses (forward-kinematics arm angles)})))
 
 (defn end-effector
   "The final link's world-frame transform."

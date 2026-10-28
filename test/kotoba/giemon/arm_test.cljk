@@ -38,3 +38,32 @@
     (let [under (arm/underrated-joints two-joint-arm)]
       (is (= 1 (count under)))
       (is (= "j2" (:joint/name (first under)))))))
+
+(deftest angle-violations-test
+  (testing "in-limit command has no violations"
+    (is (empty? (arm/angle-violations two-joint-arm [0.5 -0.5]))))
+  (testing "an angle outside the declared limit is reported with its joint"
+    (let [v (arm/angle-violations two-joint-arm [0.0 1.5])]
+      (is (= 1 (count v)))
+      (is (= :out-of-limit (:violation/kind (first v))))
+      (is (= "j2" (:joint/name (first v))))))
+  (testing "missing or extra angles are a count mismatch, not zero-filled"
+    (is (= :angle-count-mismatch
+           (:violation/kind (first (arm/angle-violations two-joint-arm [0.0])))))
+    (is (= :angle-count-mismatch
+           (:violation/kind (first (arm/angle-violations two-joint-arm [0.0 0.0 0.0]))))))
+  (testing "non-number and NaN angles fail closed"
+    (is (seq (arm/angle-violations two-joint-arm [nil 0.0])))
+    (is (seq (arm/angle-violations two-joint-arm ["x" 0.0])))
+    (is (seq (arm/angle-violations two-joint-arm [(/ 0.0 0.0) 0.0]))))
+  (testing "a joint without a declared limit fails closed"
+    (is (seq (arm/angle-violations {:arm/chain [{:joint/name "j" :joint/origin [0 0 1] :joint/axis [0 0 1]}]} [0.0])))))
+
+(deftest checked-forward-kinematics-test
+  (testing "in-limit command yields the plain FK poses"
+    (is (= {:poses (arm/forward-kinematics two-joint-arm [0.5 -0.5])}
+           (arm/checked-forward-kinematics two-joint-arm [0.5 -0.5]))))
+  (testing "out-of-limit command is refused and yields no poses"
+    (let [r (arm/checked-forward-kinematics two-joint-arm [0.0 1.5])]
+      (is (nil? (:poses r)))
+      (is (= "j2" (:joint/name (first (:refused r))))))))
